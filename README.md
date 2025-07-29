@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Codebase Structure
 
 > The code structure inspired by https://github.com/Netflix/dispatch.
@@ -49,3 +50,6 @@ Single file; if too long → split into multiple files (one prompt per file or s
 ### Routers.py
 
 Never split into more than one file
+=======
+# s1
+>>>>>>> 8102eca2ae2106a225736acf39e196317fdd1e66
