@@ -33,6 +33,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, InstanceOf, Pri
 from uuid_extensions import uuid7str
 
 from browser_use.browser.profile import BROWSERUSE_DEFAULT_CHANNEL, BrowserChannel, BrowserProfile
+from browser_use.browser.stealth_ops import StealthOps
 from browser_use.browser.types import (
 	Browser,
 	BrowserContext,
@@ -386,6 +387,7 @@ class BrowserSession(BaseModel):
 
 			# Configure browser
 			await self._setup_viewports()
+			await self._setup_stealth_mode()
 			await self._setup_current_page_change_listeners()
 			await self._start_context_tracing()
 
@@ -1674,6 +1676,62 @@ class BrowserSession(BaseModel):
 				self.logger.warning(
 					f'⚠️ Failed to resize browser window to {_log_size(self.browser_profile.window_size)} via CDP setWindowBounds: {type(e).__name__}: {e}'
 				)
+
+	@observe_debug(
+		ignore_input=True, ignore_output=True, name='setup_stealth_mode', metadata={'stealth_level': '{{browser_profile.stealth_level}}'}
+	)
+	async def _setup_stealth_mode(self) -> None:
+		"""Set up stealth mode features including JavaScript injection and user agent spoofing."""
+		if not self.browser_profile.stealth:
+			return
+
+		assert self.browser_context, 'BrowserSession.browser_context must already be set up before calling _setup_stealth_mode()'
+
+		stealth_level = self.browser_profile.stealth_level
+		self.logger.info(f'🕶️ Setting up {stealth_level.value} stealth mode...')
+
+		# Apply user agent spoofing for advanced and military-grade levels
+		if stealth_level in [self.browser_profile.stealth_level.ADVANCED, self.browser_profile.stealth_level.MILITARY_GRADE]:
+			ua_profile = self.browser_profile.get_stealth_user_agent_profile()
+			if ua_profile:
+				try:
+					# Apply user agent spoofing
+					await self.browser_context.set_extra_http_headers({
+						'User-Agent': ua_profile['user_agent'],
+						'Accept-Language': ua_profile['accept_language_header'],
+						'Sec-CH-UA': ua_profile['sec_ch_ua'],
+						'Sec-CH-UA-Mobile': ua_profile['sec_ch_ua_mobile'],
+						'Sec-CH-UA-Platform': ua_profile['sec_ch_ua_platform'],
+						'Sec-CH-UA-Platform-Version': ua_profile['sec_ch_ua_platform_version'],
+						'Sec-CH-UA-Arch': ua_profile['sec_ch_ua_arch'],
+						'Sec-CH-UA-Bitness': ua_profile['sec_ch_ua_bitness'],
+						'Sec-CH-UA-Full-Version-List': ua_profile['sec_ch_ua_full_version_list'],
+					})
+					self.logger.debug(f'🎭 Applied user agent spoofing: {ua_profile["user_agent"][:50]}...')
+				except Exception as e:
+					self.logger.warning(f'⚠️ Failed to apply user agent spoofing: {type(e).__name__}: {e}')
+
+		# Apply JavaScript evasion scripts for military-grade level
+		if stealth_level == self.browser_profile.stealth_level.MILITARY_GRADE:
+			evasion_scripts = self.browser_profile.get_stealth_evasion_scripts()
+			if evasion_scripts:
+				try:
+					# Add init script to all pages in the context
+					await self.browser_context.add_init_script(evasion_scripts)
+					self.logger.debug('🛡️ Applied military-grade JavaScript evasion scripts')
+				except Exception as e:
+					self.logger.warning(f'⚠️ Failed to inject stealth evasion scripts: {type(e).__name__}: {e}')
+
+		# Log stealth effectiveness summary
+		total_features = []
+		if stealth_level != self.browser_profile.stealth_level.BASIC:
+			total_features.append(f'{len(self.browser_profile._get_stealth_args())} Chrome flags')
+		if stealth_level in [self.browser_profile.stealth_level.ADVANCED, self.browser_profile.stealth_level.MILITARY_GRADE]:
+			total_features.append('UA spoofing')
+		if stealth_level == self.browser_profile.stealth_level.MILITARY_GRADE:
+			total_features.append('JS evasion')
+		
+		self.logger.info(f'✅ {stealth_level.value} stealth mode active: {", ".join(total_features)}')
 
 	def _set_browser_keep_alive(self, keep_alive: bool | None) -> None:
 		"""set the keep_alive flag on the browser_profile, defaulting to True if keep_alive is None"""

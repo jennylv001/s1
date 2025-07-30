@@ -11,6 +11,7 @@ from pydantic import AfterValidator, AliasChoices, BaseModel, ConfigDict, Field,
 from uuid_extensions import uuid7str
 
 from browser_use.browser.types import ClientCertificate, Geolocation, HttpCredentials, ProxySettings, ViewportSize
+from browser_use.browser.stealth_ops import StealthOps
 from browser_use.config import CONFIG
 from browser_use.observability import observe_debug
 from browser_use.utils import _log_pretty_path, logger
@@ -288,6 +289,13 @@ class BrowserChannel(str, Enum):
 	MSEDGE_CANARY = 'msedge-canary'
 
 
+class StealthLevel(str, Enum):
+	"""Stealth mode levels for browser automation detection evasion"""
+	BASIC = 'basic'  # Use patchright only
+	ADVANCED = 'advanced'  # Add military-grade Chrome flags
+	MILITARY_GRADE = 'military-grade'  # Full military-grade with JS injection and UA spoofing
+
+
 # Using constants from central location in browser_use.config
 BROWSERUSE_DEFAULT_CHANNEL = BrowserChannel.CHROMIUM
 
@@ -551,6 +559,7 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 
 	# custom options we provide that aren't native playwright kwargs
 	stealth: bool = Field(default=False, description='Use stealth mode to avoid detection by anti-bot systems.')
+	stealth_level: StealthLevel = Field(default=StealthLevel.MILITARY_GRADE, description='Stealth mode level when stealth=True.')
 	disable_security: bool = Field(default=False, description='Disable browser security features.')
 	deterministic_rendering: bool = Field(default=False, description='Enable deterministic rendering flags.')
 	allowed_domains: list[str] | None = Field(
@@ -689,6 +698,7 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 			*(CHROME_HEADLESS_ARGS if self.headless else []),
 			*(CHROME_DISABLE_SECURITY_ARGS if self.disable_security else []),
 			*(CHROME_DETERMINISTIC_RENDERING_ARGS if self.deterministic_rendering else []),
+			*(self._get_stealth_args() if self.stealth else []),
 			*(
 				[f'--window-size={self.window_size["width"]},{self.window_size["height"]}']
 				if self.window_size
@@ -704,6 +714,51 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 		# convert to dict and back to dedupe and merge duplicate args
 		final_args_list = BrowserLaunchArgs.args_as_list(BrowserLaunchArgs.args_as_dict(pre_conversion_args))
 		return final_args_list
+
+	def _get_stealth_args(self) -> list[str]:
+		"""Get stealth-specific Chrome CLI args based on stealth level configuration."""
+		if not self.stealth:
+			return []
+
+		stealth_args = []
+		
+		if self.stealth_level == StealthLevel.BASIC:
+			# Basic level: minimal stealth args already included in default args
+			# The main stealth work is done by using patchright instead of playwright
+			return stealth_args
+			
+		elif self.stealth_level == StealthLevel.ADVANCED:
+			# Advanced level: add military-grade Chrome flags
+			stealth_args.extend(StealthOps.generate_military_grade_flags())
+			
+		elif self.stealth_level == StealthLevel.MILITARY_GRADE:
+			# Military-grade level: all stealth flags
+			stealth_args.extend(StealthOps.generate_military_grade_flags())
+			
+			# Add docker-specific flags if running in containerized environment
+			if CONFIG.IN_DOCKER:
+				stealth_args.extend(StealthOps.get_docker_specific_flags())
+		
+		logger.debug(f'🕶️ Applied {len(stealth_args)} stealth-specific Chrome args for {self.stealth_level.value} level')
+		return stealth_args
+
+	def get_stealth_user_agent_profile(self) -> dict[str, Any] | None:
+		"""Get stealth user agent profile for spoofing when stealth is enabled."""
+		if not self.stealth or self.stealth_level == StealthLevel.BASIC:
+			return None
+		return StealthOps.get_user_agent_profile()
+
+	def get_stealth_evasion_scripts(self) -> str | None:
+		"""Get JavaScript evasion scripts when military-grade stealth is enabled."""
+		if not self.stealth or self.stealth_level != StealthLevel.MILITARY_GRADE:
+			return None
+		
+		# Get user agent profile for dynamic script generation
+		ua_profile = self.get_stealth_user_agent_profile()
+		if not ua_profile:
+			return None
+			
+		return StealthOps.get_evasion_scripts(ua_profile)
 
 	def kwargs_for_launch_persistent_context(self) -> BrowserLaunchPersistentContextArgs:
 		"""Return the kwargs for BrowserType.launch()."""
