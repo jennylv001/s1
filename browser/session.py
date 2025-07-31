@@ -853,10 +853,17 @@ class BrowserSession(BaseModel):
 		"""
 		is_stealth = self.browser_profile.stealth
 
+		# Enhanced logging for stealth mode debugging
+		self.logger.debug(f'🔍 setup_playwright called with stealth={is_stealth}')
+
 		# Configure browser channel based on stealth mode
 		if is_stealth:
 			# use patchright + chrome when stealth=True
+			original_channel = self.browser_profile.channel
 			self.browser_profile.channel = self.browser_profile.channel or BrowserChannel.CHROME
+			if original_channel != self.browser_profile.channel:
+				self.logger.info(f'🔧 Stealth mode: Updated channel from {original_channel} to {self.browser_profile.channel.name.lower()}')
+			
 			self.logger.info(f'🕶️ Stealth mode ENABLED: Using patchright + {self.browser_profile.channel.name.lower()} browser')
 			self.logger.info(f'🕶️ Stealth level: {self.browser_profile.stealth_level.value.upper()}')
 		else:
@@ -866,6 +873,14 @@ class BrowserSession(BaseModel):
 
 		# Get or create the global playwright object
 		self.playwright = self.playwright or await self._unsafe_get_or_start_playwright_object()
+		
+		# Enhanced logging for stealth mode debugging - verify playwright type
+		if is_stealth:
+			playwright_type = 'patchright' if 'patchright' in str(type(self.playwright).__module__) else 'playwright'
+			if playwright_type == 'patchright':
+				self.logger.info(f'✅ Successfully using {playwright_type} for stealth mode')
+			else:
+				self.logger.warning(f'⚠️ Expected patchright but got {playwright_type} - stealth may be less effective')
 
 		# Log stealth configuration validation if applicable
 		if is_stealth:
@@ -1985,10 +2000,41 @@ class BrowserSession(BaseModel):
 			reason: Human-readable reason for the fallback
 		"""
 		old_dir = self.browser_profile.user_data_dir
-		self.browser_profile.user_data_dir = Path(tempfile.mkdtemp(prefix='browseruse-tmp-singleton-'))
+		
+		# Fix 2: Profile Fallback State Protection
+		# Preserve critical configuration (stealth settings) when switching to temporary profile
+		stealth_config = getattr(self.browser_profile, 'stealth', False)
+		stealth_level = getattr(self.browser_profile, 'stealth_level', None)
+		
+		# Enhanced logging for stealth mode debugging
+		if stealth_config:
+			self.logger.debug(f'🔍 _fallback_to_temp_profile: Preserving stealth config: stealth={stealth_config}, level={stealth_level}')
+		
+		# Create new temp directory but preserve all other profile settings
+		new_temp_dir = Path(tempfile.mkdtemp(prefix='browseruse-tmp-singleton-'))
+		
+		# Update only the user_data_dir, preserving all other configuration
+		self.browser_profile.user_data_dir = new_temp_dir
+		
+		# Ensure stealth configuration is preserved after profile update
+		if stealth_config:
+			# Force stealth configuration to be preserved
+			self.browser_profile.stealth = stealth_config
+			if stealth_level is not None:
+				self.browser_profile.stealth_level = stealth_level
+			
+			# Verify stealth config was preserved
+			actual_stealth = getattr(self.browser_profile, 'stealth', False)
+			actual_level = getattr(self.browser_profile, 'stealth_level', None)
+			if actual_stealth == stealth_config and actual_level == stealth_level:
+				self.logger.info(f'✅ Stealth configuration preserved during fallback: stealth={actual_stealth}, level={actual_level}')
+			else:
+				self.logger.error(f'❌ STEALTH CONFIGURATION LOST during fallback: Expected stealth={stealth_config}, level={stealth_level} but got stealth={actual_stealth}, level={actual_level}')
+		
 		self.logger.warning(
 			f'⚠️ {reason} detected. Profile at {_log_pretty_path(old_dir)} is locked. '
 			f'Using temporary profile instead: {_log_pretty_path(self.browser_profile.user_data_dir)}'
+			f'{" (stealth config preserved)" if stealth_config else ""}'
 		)
 
 	@observe_debug(ignore_input=True, ignore_output=True, name='prepare_user_data_dir')
