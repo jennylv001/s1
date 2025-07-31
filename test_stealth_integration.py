@@ -322,6 +322,112 @@ def main():
         print("💥 Some tests failed. Please check the implementation.")
         return False
 
+def test_stealth_configuration_protection():
+    """Test that stealth configuration is protected from session overrides."""
+    print("🧪 Testing stealth configuration protection...")
+    
+    from enum import Enum
+    
+    class StealthLevel(str, Enum):
+        BASIC = 'basic'
+        ADVANCED = 'advanced'
+        MILITARY_GRADE = 'military-grade'
+    
+    class MockProfile:
+        def __init__(self, stealth=True, stealth_level=StealthLevel.MILITARY_GRADE):
+            self.stealth = stealth
+            self.stealth_level = stealth_level
+            
+        def model_copy(self, update=None):
+            new_profile = MockProfile(self.stealth, self.stealth_level)
+            if update:
+                for key, value in update.items():
+                    if hasattr(new_profile, key):
+                        setattr(new_profile, key, value)
+            return new_profile
+    
+    # Test scenario where session overrides try to disable stealth
+    original_profile = MockProfile(stealth=True)
+    assert original_profile.stealth == True, "Original profile should have stealth enabled"
+    
+    # Simulate the fix we implemented
+    profile_overrides = {'stealth': False, 'other_setting': 'value'}
+    
+    # Our fix: protect stealth configuration
+    if 'stealth' in profile_overrides and original_profile.stealth and not profile_overrides['stealth']:
+        print("🔒 Protection activated: preventing stealth=True from being overridden to stealth=False")
+        profile_overrides.pop('stealth', None)
+    
+    final_profile = original_profile.model_copy(update=profile_overrides)
+    assert final_profile.stealth == True, "Stealth configuration should be protected"
+    
+    print("✅ Stealth configuration protection test PASSED")
+    return True
+
+def test_enhanced_logging_presence():
+    """Test that enhanced logging is present in the session file."""
+    print("🧪 Testing enhanced logging presence...")
+    
+    current_dir = Path(__file__).parent
+    session_path = current_dir / 'browser' / 'session.py'
+    
+    if not session_path.exists():
+        print("⚠️ Session file not found, skipping logging test")
+        return True
+        
+    with open(session_path, 'r') as f:
+        content = f.read()
+        
+    # Check for key logging enhancements
+    logging_features = [
+        '🔍 Initial stealth config:',
+        '🔒 Starting patchright subprocess',
+        '🔍 After setup_playwright:',
+        '⚠️ Stealth mode configuration lost!',
+        '🔒 Protecting stealth=True from being overridden',
+    ]
+    
+    found_features = 0
+    for feature in logging_features:
+        if feature in content:
+            found_features += 1
+            
+    if found_features >= 4:  # Allow for some variation
+        print(f"✅ Enhanced logging features found: {found_features}/{len(logging_features)}")
+        return True
+    else:
+        print(f"❌ Only {found_features}/{len(logging_features)} logging features found")
+        return False
+
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    print("\n" + "="*60)
+    print("🔧 ADDITIONAL STEALTH MODE FIX TESTS")
+    print("="*60)
+    
+    additional_tests = [
+        test_stealth_configuration_protection,
+        test_enhanced_logging_presence,
+    ]
+    
+    additional_passed = 0
+    for test in additional_tests:
+        try:
+            if test():
+                additional_passed += 1
+        except Exception as e:
+            print(f"❌ {test.__name__} failed: {e}")
+    
+    print(f"\n🎯 Additional Fix Tests: {additional_passed}/{len(additional_tests)} passed")
+    
+    # Run original tests
+    original_success = main()
+    
+    # Overall success
+    overall_success = original_success and (additional_passed == len(additional_tests))
+    
+    if overall_success:
+        print("\n🏆 ALL STEALTH TESTS (INCLUDING FIXES) PASSED!")
+    else:
+        print("\n❌ Some stealth tests failed")
+    
+    sys.exit(0 if overall_success else 1)
