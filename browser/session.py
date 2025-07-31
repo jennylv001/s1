@@ -321,12 +321,42 @@ class BrowserSession(BaseModel):
 		# FOR REPL DEBUGGING ONLY, NEVER ALLOW CIRCULAR REFERENCES IN REAL CODE:
 		# self.browser_profile._in_use_by_session = self
 
+		# LOGGING: Track BrowserProfile mutations during session override application
+		original_profile_id = self.browser_profile.id if self.browser_profile else None
+		original_stealth = getattr(self.browser_profile, 'stealth', None) if self.browser_profile else None
+		original_channel = getattr(self.browser_profile, 'channel', None) if self.browser_profile else None
+		
+		logger = logging.getLogger(f'browser_use.BrowserSession')
+		logger.info(f'🔧 BrowserSession#{self.id[-4:]} APPLYING PROFILE OVERRIDES')
+		logger.info(f'🔧   └─ Original profile: {original_profile_id[-4:] if original_profile_id else None} (obj#{str(id(self.browser_profile))[-4:] if self.browser_profile else None})')
+		logger.info(f'🔧   └─ Original config: stealth={original_stealth}, channel={original_channel.value if original_channel else None}')
+		if profile_overrides:
+			logger.info(f'🔧   └─ Session overrides: {profile_overrides}')
+			# Log specific stealth/channel overrides
+			if 'stealth' in profile_overrides:
+				logger.warning(f'🔧   └─ ⚠️ STEALTH OVERRIDE: {original_stealth} → {profile_overrides["stealth"]}')
+			if 'channel' in profile_overrides:
+				logger.warning(f'🔧   └─ ⚠️ CHANNEL OVERRIDE: {original_channel} → {profile_overrides["channel"]}')
+
 		self.browser_profile = self.browser_profile.model_copy(update=profile_overrides)
 		
 		# Verify stealth config is preserved
 		if hasattr(self, 'browser_profile') and self.browser_profile:
 			logger = logging.getLogger(f'browser_use.BrowserSession')
 			logger.debug(f'🔍 After model_copy: stealth={self.browser_profile.stealth}')
+			
+			# LOGGING: Track final state after override application
+			final_stealth = getattr(self.browser_profile, 'stealth', None)
+			final_channel = getattr(self.browser_profile, 'channel', None)
+			logger.info(f'🔧 BrowserSession#{self.id[-4:]} PROFILE OVERRIDES APPLIED')
+			logger.info(f'🔧   └─ New profile: {self.browser_profile.id[-4:]} (obj#{str(id(self.browser_profile))[-4:]})')
+			logger.info(f'🔧   └─ Final config: stealth={final_stealth}, channel={final_channel.value if final_channel else None}')
+			
+			# Log any unexpected changes
+			if original_stealth != final_stealth:
+				logger.warning(f'🔧   └─ ⚠️ STEALTH CHANGED: {original_stealth} → {final_stealth}')
+			if original_channel != final_channel:
+				logger.warning(f'🔧   └─ ⚠️ CHANNEL CHANGED: {original_channel} → {final_channel}')
 
 		# FOR REPL DEBUGGING ONLY, NEVER ALLOW CIRCULAR REFERENCES IN REAL CODE:
 		# self.browser_profile._in_use_by_session = self
@@ -856,19 +886,33 @@ class BrowserSession(BaseModel):
 		# Enhanced logging for stealth mode debugging
 		self.logger.debug(f'🔍 setup_playwright called with stealth={is_stealth}')
 
+		# LOGGING: Track channel mutations during playwright setup
+		original_channel = self.browser_profile.channel
+		self.logger.info(f'🎭 BrowserSession#{self.id[-4:]} SETUP_PLAYWRIGHT')
+		self.logger.info(f'🎭   └─ Profile: {self.browser_profile.id[-4:]} (obj#{str(id(self.browser_profile))[-4:]})')
+		self.logger.info(f'🎭   └─ Input config: stealth={is_stealth}, channel={original_channel.value if original_channel else None}')
+
 		# Configure browser channel based on stealth mode
 		if is_stealth:
 			# use patchright + chrome when stealth=True
 			original_channel = self.browser_profile.channel
 			self.browser_profile.channel = self.browser_profile.channel or BrowserChannel.CHROME
 			if original_channel != self.browser_profile.channel:
+				# LOGGING: Channel mutation during playwright setup
+				self.logger.warning(f'🎭   └─ ⚠️ CHANNEL MUTATION: {original_channel} → {self.browser_profile.channel.name.lower()} (stealth mode requirement)')
 				self.logger.info(f'🔧 Stealth mode: Updated channel from {original_channel} to {self.browser_profile.channel.name.lower()}')
+			else:
+				self.logger.debug(f'🎭   └─ Channel already correct: {self.browser_profile.channel.name.lower()}')
 			
 			self.logger.info(f'🕶️ Stealth mode ENABLED: Using patchright + {self.browser_profile.channel.name.lower()} browser')
 			self.logger.info(f'🕶️ Stealth level: {self.browser_profile.stealth_level.value.upper()}')
 		else:
 			# use playwright + chromium by default
+			original_channel = self.browser_profile.channel
 			self.browser_profile.channel = self.browser_profile.channel or BrowserChannel.CHROMIUM
+			if original_channel != self.browser_profile.channel:
+				# LOGGING: Channel mutation during playwright setup (non-stealth)
+				self.logger.info(f'🎭   └─ Channel defaulted: {original_channel} → {self.browser_profile.channel.name.lower()}')
 			self.logger.info(f'🔓 Stealth mode DISABLED: Using standard playwright + {self.browser_profile.channel.name.lower()} browser')
 
 		# Get or create the global playwright object
@@ -899,6 +943,13 @@ class BrowserSession(BaseModel):
 				self.logger.info('💡 For maximum stealth effectiveness, consider headless=False')
 			if self.browser_profile.no_viewport is False:
 				self.logger.info('💡 For maximum stealth effectiveness, consider no_viewport=True')
+
+		# LOGGING: Final configuration after setup
+		final_channel = self.browser_profile.channel
+		final_stealth = self.browser_profile.stealth
+		self.logger.info(f'🎭 BrowserSession#{self.id[-4:]} PLAYWRIGHT SETUP COMPLETE')
+		self.logger.info(f'🎭   └─ Final config: stealth={final_stealth}, channel={final_channel.value if final_channel else None}')
+		self.logger.info(f'🎭   └─ Playwright type: {type(self.playwright).__module__.split(".")[0] if self.playwright else "None"}')
 
 		# register a shutdown hook to stop the shared global playwright node.js client when the program exits (if an event loop is still running)
 		def shudown_playwright():
@@ -1246,6 +1297,23 @@ class BrowserSession(BaseModel):
 						# Build final command
 						chrome_launch_cmd = [chromium_path] + final_args
 
+						# LOGGING: Browser launch confirmation - log actual channel and stealth config
+						actual_channel = self.browser_profile.channel
+						actual_stealth = self.browser_profile.stealth
+						actual_stealth_level = self.browser_profile.stealth_level if actual_stealth else None
+						actual_binary = Path(chromium_path).name if chromium_path else "unknown"
+						
+						self.logger.info(f'🚀 BrowserSession#{self.id[-4:]} LAUNCHING BROWSER')
+						self.logger.info(f'🚀   └─ Profile: {self.browser_profile.id[-4:]} (obj#{str(id(self.browser_profile))[-4:]})')
+						self.logger.info(f'🚀   └─ CONFIRMED BROWSER CHANNEL: {actual_channel.value if actual_channel else "None"}')
+						self.logger.info(f'🚀   └─ CONFIRMED STEALTH MODE: {actual_stealth} (level: {actual_stealth_level.value if actual_stealth_level else "N/A"})')
+						self.logger.info(f'🚀   └─ Binary executable: {actual_binary}')
+						self.logger.info(f'🚀   └─ Debug port: {debug_port}')
+						self.logger.info(f'🚀   └─ Total launch args: {len(final_args)}')
+						if actual_stealth:
+							stealth_args = self.browser_profile._get_stealth_args()
+							self.logger.info(f'🚀   └─ Stealth args: {len(stealth_args)} detection evasion flags')
+
 						# Launch chrome as subprocess
 						self.logger.info(
 							f' ↳ Spawning Chrome subprocess listening on CDP http://127.0.0.1:{debug_port}/ with user_data_dir= {_log_pretty_path(self.browser_profile.user_data_dir)}'
@@ -1262,7 +1330,12 @@ class BrowserSession(BaseModel):
 						# Store the browser PID
 						self.browser_pid = process.pid
 						self._set_browser_keep_alive(False)  # We launched it, so we should close it
-						# self.logger.debug(f'👶 Chrome subprocess launched with browser_pid={process.pid}')
+						
+						# LOGGING: Browser process launched successfully
+						self.logger.info(f'🚀 BrowserSession#{self.id[-4:]} BROWSER PROCESS STARTED')
+						self.logger.info(f'🚀   └─ Process PID: {process.pid}')
+						self.logger.info(f'🚀   └─ Stealth mode: {actual_stealth}')
+						self.logger.info(f'🚀   └─ Channel: {actual_channel.value if actual_channel else "None"}')
 
 						# Use the existing setup_browser_via_browser_pid method to connect
 						# It will wait for the CDP port to become available

@@ -619,6 +619,31 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 		return f'BrowserProfile#{self.id[-4:]}'
 
 	@model_validator(mode='after')
+	def log_browser_profile_creation(self) -> Self:
+		"""Log BrowserProfile creation with stealth and channel details for debugging parallel agents."""
+		# LOGGING: BrowserProfile object creation and configuration
+		import inspect
+		frame = inspect.currentframe()
+		creation_context = "unknown"
+		try:
+			# Get the calling context (skip this validator and pydantic internals)
+			caller_frame = frame.f_back
+			while caller_frame and 'pydantic' in str(caller_frame.f_code.co_filename):
+				caller_frame = caller_frame.f_back
+			if caller_frame:
+				creation_context = f"{caller_frame.f_code.co_filename}:{caller_frame.f_lineno} in {caller_frame.f_code.co_name}()"
+		except Exception:
+			pass
+		finally:
+			del frame
+			
+		logger.info(f'🏗️ BrowserProfile#{self.id[-4:]} CREATED (obj#{str(id(self))[-4:]})')
+		logger.info(f'🏗️   └─ Creation context: {creation_context}')
+		logger.info(f'🏗️   └─ Initial config: stealth={self.stealth}, channel={self.channel.value if self.channel else None}')
+		logger.info(f'🏗️   └─ Stealth level: {self.stealth_level.value if self.stealth else "N/A"}')
+		return self
+
+	@model_validator(mode='after')
 	def copy_old_config_names_to_new(self) -> Self:
 		"""Copy old config window_width & window_height to window_size."""
 		if self.window_width or self.window_height:
@@ -687,11 +712,23 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 			# Force Chrome channel when stealth=True to ensure patchright compatibility
 			if not self.channel or self.channel != BrowserChannel.CHROME:
 				original_channel = self.channel
+				
+				# LOGGING: Channel mutation for stealth mode
+				logger.info(f'🔧 BrowserProfile#{self.id[-4:]} (obj#{str(id(self))[-4:]}) CHANNEL MUTATION: stealth=True enforcing channel change')
+				logger.info(f'🔧   └─ Original channel: {original_channel} → New channel: {BrowserChannel.CHROME.value}')
+				logger.info(f'🔧   └─ Context: stealth mode requires patchright compatibility')
+				
 				self.channel = BrowserChannel.CHROME
 				logger.info(f'🔧 Stealth mode enabled: Forcing browser channel from {original_channel} to {self.channel.value} for patchright compatibility')
+			else:
+				# LOGGING: Channel already correct for stealth
+				logger.debug(f'🔧 BrowserProfile#{self.id[-4:]} (obj#{str(id(self))[-4:]}) CHANNEL PRESERVED: {self.channel.value} already correct for stealth mode')
 			
 			# Validate stealth configuration
 			self.validate_stealth_config()
+		else:
+			# LOGGING: Stealth disabled, channel not enforced
+			logger.debug(f'🔧 BrowserProfile#{self.id[-4:]} (obj#{str(id(self))[-4:]}) STEALTH DISABLED: channel={self.channel.value if self.channel else None} (no enforcement)')
 		return self
 
 	def get_args(self) -> list[str]:
@@ -881,6 +918,43 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 			return None
 			
 		return StealthOps.get_evasion_scripts(ua_profile)
+
+	def model_copy(self, *, update: dict[str, Any] | None = None, deep: bool = False) -> Self:
+		"""Override model_copy to log BrowserProfile copying for parallel agent debugging."""
+		# LOGGING: BrowserProfile object copying
+		import inspect
+		frame = inspect.currentframe()
+		copy_context = "unknown"
+		try:
+			# Get the calling context
+			caller_frame = frame.f_back
+			if caller_frame:
+				copy_context = f"{caller_frame.f_code.co_filename}:{caller_frame.f_lineno} in {caller_frame.f_code.co_name}()"
+		except Exception:
+			pass
+		finally:
+			del frame
+			
+		logger.info(f'📋 BrowserProfile#{self.id[-4:]} COPYING (obj#{str(id(self))[-4:]})')
+		logger.info(f'📋   └─ Copy context: {copy_context}')
+		logger.info(f'📋   └─ Original config: stealth={self.stealth}, channel={self.channel.value if self.channel else None}')
+		if update:
+			logger.info(f'📋   └─ Update overrides: {update}')
+			# LOGGING: Check for stealth/channel mutations in update
+			if 'stealth' in update:
+				logger.warning(f'📋   └─ ⚠️ STEALTH MUTATION in copy update: {self.stealth} → {update["stealth"]}')
+			if 'channel' in update:
+				logger.warning(f'📋   └─ ⚠️ CHANNEL MUTATION in copy update: {self.channel} → {update["channel"]}')
+		
+		# Call parent model_copy
+		copied = super().model_copy(update=update, deep=deep)
+		
+		# LOGGING: Log the copied object
+		logger.info(f'📋 BrowserProfile#{copied.id[-4:]} COPY CREATED (obj#{str(id(copied))[-4:]})')
+		logger.info(f'📋   └─ Final config: stealth={copied.stealth}, channel={copied.channel.value if copied.channel else None}')
+		logger.info(f'📋   └─ Copy relationship: {self.id[-4:]} (obj#{str(id(self))[-4:]}) → {copied.id[-4:]} (obj#{str(id(copied))[-4:]})')
+		
+		return copied
 
 	def kwargs_for_launch_persistent_context(self) -> BrowserLaunchPersistentContextArgs:
 		"""Return the kwargs for BrowserType.launch()."""
