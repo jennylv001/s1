@@ -682,7 +682,23 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 	@model_validator(mode='after')
 	def validate_and_setup_stealth_config(self) -> Self:
 		"""Validate stealth configuration and apply fallbacks if needed."""
+		
+		# Fix 4: BrowserProfile Constructor Integrity
+		# Ensure stealth parameter is correctly assigned and validate state matches input
+		if hasattr(self, '_source_stealth_value'):
+			# Check if stealth configuration matches the original input
+			original_stealth = getattr(self, '_source_stealth_value', None)
+			if original_stealth is not None and original_stealth != self.stealth:
+				logger.warning(f'🔧 Stealth configuration mismatch detected: input={original_stealth}, current={self.stealth}')
+				# Restore original stealth value if it was lost
+				if original_stealth and not self.stealth:
+					logger.info(f'🔧 Restoring stealth configuration: stealth=True')
+					self.stealth = original_stealth
+		
 		if self.stealth:
+			# Log configuration state for debugging
+			logger.debug(f'🔍 BrowserProfile stealth validation: stealth={self.stealth}, level={self.stealth_level}')
+			
 			# Fix 3: Channel Enforcement for Stealth
 			# Force Chrome channel when stealth=True to ensure patchright compatibility
 			if not self.channel or self.channel != BrowserChannel.CHROME:
@@ -692,6 +708,12 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 			
 			# Validate stealth configuration
 			self.validate_stealth_config()
+			
+			# Final integrity check - ensure stealth state is preserved
+			if not self.stealth:
+				logger.error(f'❌ CRITICAL: Stealth configuration lost during validation! Force-restoring stealth=True')
+				self.stealth = True
+		
 		return self
 
 	def get_args(self) -> list[str]:

@@ -371,13 +371,29 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 			if hasattr(browser_profile, 'stealth') and browser_profile.stealth:
 				self.logger.debug(f'🔍 Agent.__init__ creating BrowserSession: browser_profile.stealth={browser_profile.stealth}, level={browser_profile.stealth_level}')
 			
-			self.browser_session = BrowserSession(
-				browser_profile=browser_profile,
-				browser=browser,
-				browser_context=browser_context,
-				agent_current_page=page,
-				id=uuid7str()[:-4] + self.id[-4:],  # re-use the same 4-char suffix so they show up together in logs
-			)
+			# Fix 1: Agent Configuration Preservation
+			# Extract stealth parameters to pass explicitly to BrowserSession for guaranteed preservation
+			stealth_params = {}
+			if hasattr(browser_profile, 'stealth'):
+				stealth_params['stealth'] = browser_profile.stealth
+			if hasattr(browser_profile, 'stealth_level'):
+				stealth_params['stealth_level'] = browser_profile.stealth_level
+			
+			# Only pass stealth params if stealth is enabled to avoid overriding with defaults
+			browser_session_kwargs = {
+				'browser_profile': browser_profile,
+				'browser': browser,
+				'browser_context': browser_context,
+				'agent_current_page': page,
+				'id': uuid7str()[:-4] + self.id[-4:],  # re-use the same 4-char suffix so they show up together in logs
+			}
+			
+			# Only add stealth parameters if stealth is actually enabled
+			if stealth_params.get('stealth', False):
+				browser_session_kwargs.update(stealth_params)
+				self.logger.debug(f'🔍 Agent.__init__ passing explicit stealth params: {stealth_params}')
+			
+			self.browser_session = BrowserSession(**browser_session_kwargs)
 			
 			# Enhanced logging for stealth mode debugging - verify stealth config was preserved after BrowserSession creation
 			if hasattr(browser_profile, 'stealth') and browser_profile.stealth:
