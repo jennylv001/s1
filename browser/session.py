@@ -1766,8 +1766,6 @@ class BrowserSession(BaseModel):
 		self.logger.debug(f'🔍 Playwright instance type: {type(self.playwright).__name__}')
 		
 		if not self.browser_profile.stealth:
-			# Additional debugging when stealth is disabled
-			self.logger.warning('⚠️ Stealth mode configuration lost! Expected stealth=True but got stealth=False')
 			self.logger.debug(f'🔍 Full browser profile: {self.browser_profile}')
 			self.logger.info('🔓 Stealth mode: DISABLED - using standard browser automation')
 			return
