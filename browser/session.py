@@ -301,54 +301,32 @@ class BrowserSession(BaseModel):
 		# config Fields tracked by BrowserProfile, instead of BrowserSession's own args
 		profile_overrides = self.model_dump(exclude=set(session_own_fields))
 
-		# Fix 2: BrowserSession Stealth Handling
-		# Preserve stealth settings before applying overrides to prevent loss
-		original_stealth = getattr(self.browser_profile, 'stealth', False)
-		original_stealth_level = getattr(self.browser_profile, 'stealth_level', None)
-
 		# Enhanced logging for stealth mode debugging
-		logger = logging.getLogger(f'browser_use.BrowserSession')
-		if original_stealth:
+		if hasattr(self, 'browser_profile') and self.browser_profile and self.browser_profile.stealth:
+			logger = logging.getLogger(f'browser_use.BrowserSession')
 			logger.debug(f'🔍 apply_session_overrides_to_profile called')
-			logger.debug(f'🔍 Original stealth config: stealth={original_stealth}, level={original_stealth_level}')
+			logger.debug(f'🔍 Original stealth config: stealth={self.browser_profile.stealth}')
 			logger.debug(f'🔍 Profile overrides: {profile_overrides}')
 			
 			# Check if overrides contain stealth settings
 			if 'stealth' in profile_overrides:
 				logger.warning(f'⚠️ Profile overrides contain stealth setting: {profile_overrides["stealth"]}')
 				
-			# Protect stealth configuration from being overridden to False
-			if 'stealth' in profile_overrides and original_stealth and not profile_overrides['stealth']:
+			# Protect stealth configuration from being overridden
+			if 'stealth' in profile_overrides and self.browser_profile.stealth and not profile_overrides['stealth']:
 				logger.warning('🔒 Protecting stealth=True from being overridden to stealth=False')
 				profile_overrides.pop('stealth', None)
 				profile_overrides.pop('stealth_level', None)
-
-		# Remove any stealth-related defaults that would override intentional stealth=True
-		# Only remove if they would change stealth from True to False
-		if original_stealth and 'stealth' in profile_overrides and not profile_overrides['stealth']:
-			logger.warning('🔒 Removing profile override that would disable stealth mode')
-			profile_overrides.pop('stealth', None)
-			profile_overrides.pop('stealth_level', None)
 
 		# FOR REPL DEBUGGING ONLY, NEVER ALLOW CIRCULAR REFERENCES IN REAL CODE:
 		# self.browser_profile._in_use_by_session = self
 
 		self.browser_profile = self.browser_profile.model_copy(update=profile_overrides)
 		
-		# Fix 2: Validate stealth config is preserved after model_copy
-		final_stealth = getattr(self.browser_profile, 'stealth', False)
-		final_stealth_level = getattr(self.browser_profile, 'stealth_level', None)
-		
-		if original_stealth:
-			logger.debug(f'🔍 After model_copy: stealth={final_stealth}, level={final_stealth_level}')
-			
-			# Force correction if stealth configuration was lost despite protection
-			if original_stealth and not final_stealth:
-				logger.error(f'❌ STEALTH CONFIGURATION LOST during model_copy: Forcing correction')
-				self.browser_profile.stealth = original_stealth
-				if original_stealth_level is not None:
-					self.browser_profile.stealth_level = original_stealth_level
-				logger.info(f'✅ Stealth configuration restored: stealth={self.browser_profile.stealth}, level={self.browser_profile.stealth_level}')
+		# Verify stealth config is preserved
+		if hasattr(self, 'browser_profile') and self.browser_profile:
+			logger = logging.getLogger(f'browser_use.BrowserSession')
+			logger.debug(f'🔍 After model_copy: stealth={self.browser_profile.stealth}')
 
 		# FOR REPL DEBUGGING ONLY, NEVER ALLOW CIRCULAR REFERENCES IN REAL CODE:
 		# self.browser_profile._in_use_by_session = self
