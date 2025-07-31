@@ -301,10 +301,32 @@ class BrowserSession(BaseModel):
 		# config Fields tracked by BrowserProfile, instead of BrowserSession's own args
 		profile_overrides = self.model_dump(exclude=set(session_own_fields))
 
+		# Enhanced logging for stealth mode debugging
+		if hasattr(self, 'browser_profile') and self.browser_profile and self.browser_profile.stealth:
+			logger = logging.getLogger(f'browser_use.BrowserSession')
+			logger.debug(f'🔍 apply_session_overrides_to_profile called')
+			logger.debug(f'🔍 Original stealth config: stealth={self.browser_profile.stealth}')
+			logger.debug(f'🔍 Profile overrides: {profile_overrides}')
+			
+			# Check if overrides contain stealth settings
+			if 'stealth' in profile_overrides:
+				logger.warning(f'⚠️ Profile overrides contain stealth setting: {profile_overrides["stealth"]}')
+				
+			# Protect stealth configuration from being overridden
+			if 'stealth' in profile_overrides and self.browser_profile.stealth and not profile_overrides['stealth']:
+				logger.warning('🔒 Protecting stealth=True from being overridden to stealth=False')
+				profile_overrides.pop('stealth', None)
+				profile_overrides.pop('stealth_level', None)
+
 		# FOR REPL DEBUGGING ONLY, NEVER ALLOW CIRCULAR REFERENCES IN REAL CODE:
 		# self.browser_profile._in_use_by_session = self
 
 		self.browser_profile = self.browser_profile.model_copy(update=profile_overrides)
+		
+		# Verify stealth config is preserved
+		if hasattr(self, 'browser_profile') and self.browser_profile:
+			logger = logging.getLogger(f'browser_use.BrowserSession')
+			logger.debug(f'🔍 After model_copy: stealth={self.browser_profile.stealth}')
 
 		# FOR REPL DEBUGGING ONLY, NEVER ALLOW CIRCULAR REFERENCES IN REAL CODE:
 		# self.browser_profile._in_use_by_session = self
@@ -371,6 +393,10 @@ class BrowserSession(BaseModel):
 			self._reset_connection_state()
 
 		try:
+			# Enhanced logging for stealth mode debugging
+			self.logger.debug(f'🔍 BrowserSession.start() called')
+			self.logger.debug(f'🔍 Initial stealth config: stealth={self.browser_profile.stealth}, level={self.browser_profile.stealth_level}')
+			
 			# Setup
 			self.browser_profile.detect_display_configuration()
 			# Note: prepare_user_data_dir() is called later in _unsafe_setup_new_browser_context()
@@ -378,15 +404,19 @@ class BrowserSession(BaseModel):
 
 			# Get playwright object (has its own retry/semaphore)
 			await self.setup_playwright()
+			self.logger.debug(f'🔍 After setup_playwright: stealth={self.browser_profile.stealth}')
 
 			# Try to connect/launch browser (each has appropriate retry logic)
 			await self._connect_or_launch_browser()
+			self.logger.debug(f'🔍 After _connect_or_launch_browser: stealth={self.browser_profile.stealth}')
 
 			# Ensure we have a context
 			assert self.browser_context, f'Failed to create BrowserContext for browser={self.browser}'
+			self.logger.debug(f'🔍 After browser_context setup: stealth={self.browser_profile.stealth}')
 
 			# Configure browser
 			await self._setup_viewports()
+			self.logger.debug(f'🔍 After _setup_viewports: stealth={self.browser_profile.stealth}')
 			await self._setup_stealth_mode()
 			await self._setup_current_page_change_listeners()
 			await self._start_context_tracing()
@@ -633,13 +663,29 @@ class BrowserSession(BaseModel):
 		except RuntimeError:
 			current_loop = None
 
+		# Enhanced logging for stealth mode debugging
+		logger = logging.getLogger(f'browser_use.BrowserSession')
+		logger.debug(f'🔍 _start_global_playwright_subprocess: is_stealth={is_stealth}')
+
 		if is_stealth:
-			GLOBAL_PATCHRIGHT_API_OBJECT = await async_patchright().start()
-			GLOBAL_PATCHRIGHT_EVENT_LOOP = current_loop
-			return GLOBAL_PATCHRIGHT_API_OBJECT
+			logger.info('🔒 Starting patchright subprocess for stealth mode')
+			try:
+				GLOBAL_PATCHRIGHT_API_OBJECT = await async_patchright().start()
+				GLOBAL_PATCHRIGHT_EVENT_LOOP = current_loop
+				logger.info('✅ Patchright subprocess started successfully')
+				return GLOBAL_PATCHRIGHT_API_OBJECT
+			except Exception as e:
+				logger.error(f'❌ Failed to start patchright subprocess: {type(e).__name__}: {e}')
+				logger.warning('🔄 Falling back to playwright due to patchright failure')
+				# Fall back to playwright if patchright fails
+				GLOBAL_PLAYWRIGHT_API_OBJECT = await async_playwright().start()
+				GLOBAL_PLAYWRIGHT_EVENT_LOOP = current_loop
+				return GLOBAL_PLAYWRIGHT_API_OBJECT
 		else:
+			logger.info('🔓 Starting playwright subprocess for standard mode')
 			GLOBAL_PLAYWRIGHT_API_OBJECT = await async_playwright().start()
 			GLOBAL_PLAYWRIGHT_EVENT_LOOP = current_loop
+			logger.info('✅ Playwright subprocess started successfully')
 			return GLOBAL_PLAYWRIGHT_API_OBJECT
 
 	async def _unsafe_get_or_start_playwright_object(self) -> PlaywrightOrPatchright:
@@ -658,6 +704,10 @@ class BrowserSession(BaseModel):
 		global_api_object = GLOBAL_PATCHRIGHT_API_OBJECT if is_stealth else GLOBAL_PLAYWRIGHT_API_OBJECT
 		global_event_loop = GLOBAL_PATCHRIGHT_EVENT_LOOP if is_stealth else GLOBAL_PLAYWRIGHT_EVENT_LOOP
 
+		# Enhanced logging for stealth mode debugging
+		self.logger.debug(f'🔍 _unsafe_get_or_start_playwright_object: is_stealth={is_stealth}, driver_name={driver_name}')
+		self.logger.debug(f'🔍 Current stealth config: stealth={self.browser_profile.stealth}, level={self.browser_profile.stealth_level}')
+
 		# Check if we need to create or recreate the global object
 		should_recreate = False
 
@@ -673,15 +723,18 @@ class BrowserSession(BaseModel):
 			try:
 				# Try to access the chromium property to verify the object is still valid
 				_ = global_api_object.chromium.executable_path
+				self.logger.debug(f'✅ Existing {driver_name} instance is valid')
 			except Exception as e:
 				self.logger.debug(f'Detected invalid {driver_name} instance: {type(e).__name__}. Creating new instance.')
 				should_recreate = True
 
 		# If we already have a valid object, use it
 		if global_api_object and not should_recreate:
+			self.logger.debug(f'♻️ Reusing existing {driver_name} instance')
 			return global_api_object
 
 		# Create new playwright object
+		self.logger.debug(f'🚀 Creating new {driver_name} instance')
 		return await self._start_global_playwright_subprocess(is_stealth=is_stealth)
 
 	@retry(wait=1, retries=2, timeout=45, semaphore_limit=1, semaphore_scope='self', semaphore_lax=False)
@@ -1691,7 +1744,16 @@ class BrowserSession(BaseModel):
 	)
 	async def _setup_stealth_mode(self) -> None:
 		"""Set up stealth mode features including JavaScript injection and user agent spoofing."""
+		# Enhanced logging for stealth mode debugging
+		self.logger.debug(f'🔍 _setup_stealth_mode called')
+		self.logger.debug(f'🔍 Current stealth config: stealth={self.browser_profile.stealth}, level={self.browser_profile.stealth_level}')
+		self.logger.debug(f'🔍 Browser profile ID: {self.browser_profile.id}')
+		self.logger.debug(f'🔍 Playwright instance type: {type(self.playwright).__name__}')
+		
 		if not self.browser_profile.stealth:
+			# Additional debugging when stealth is disabled
+			self.logger.warning('⚠️ Stealth mode configuration lost! Expected stealth=True but got stealth=False')
+			self.logger.debug(f'🔍 Full browser profile: {self.browser_profile}')
 			self.logger.info('🔓 Stealth mode: DISABLED - using standard browser automation')
 			return
 
