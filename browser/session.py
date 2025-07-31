@@ -327,11 +327,11 @@ class BrowserSession(BaseModel):
 		original_channel = getattr(self.browser_profile, 'channel', None) if self.browser_profile else None
 		
 		logger = logging.getLogger(f'browser_use.BrowserSession')
-		logger.info(f'🔧 BrowserSession#{self.id[-4:]} APPLYING PROFILE OVERRIDES')
-		logger.info(f'🔧   └─ Original profile: {original_profile_id[-4:] if original_profile_id else None} (obj#{str(id(self.browser_profile))[-4:] if self.browser_profile else None})')
-		logger.info(f'🔧   └─ Original config: stealth={original_stealth}, channel={original_channel.value if original_channel else None}')
+		logger.debug(f'🔧 BrowserSession#{self.id[-4:]} APPLYING PROFILE OVERRIDES')
+		logger.debug(f'🔧   └─ Original profile: {original_profile_id[-4:] if original_profile_id else None} (obj#{str(id(self.browser_profile))[-4:] if self.browser_profile else None})')
+		logger.debug(f'🔧   └─ Original config: stealth={original_stealth}, channel={original_channel.value if original_channel else None}')
 		if profile_overrides:
-			logger.info(f'🔧   └─ Session overrides: {profile_overrides}')
+			logger.debug(f'🔧   └─ Session overrides: {profile_overrides}')
 			# Log specific stealth/channel overrides
 			if 'stealth' in profile_overrides:
 				logger.warning(f'🔧   └─ ⚠️ STEALTH OVERRIDE: {original_stealth} → {profile_overrides["stealth"]}')
@@ -348,9 +348,9 @@ class BrowserSession(BaseModel):
 			# LOGGING: Track final state after override application
 			final_stealth = getattr(self.browser_profile, 'stealth', None)
 			final_channel = getattr(self.browser_profile, 'channel', None)
-			logger.info(f'🔧 BrowserSession#{self.id[-4:]} PROFILE OVERRIDES APPLIED')
-			logger.info(f'🔧   └─ New profile: {self.browser_profile.id[-4:]} (obj#{str(id(self.browser_profile))[-4:]})')
-			logger.info(f'🔧   └─ Final config: stealth={final_stealth}, channel={final_channel.value if final_channel else None}')
+			logger.debug(f'🔧 BrowserSession#{self.id[-4:]} PROFILE OVERRIDES APPLIED')
+			logger.debug(f'🔧   └─ New profile: {self.browser_profile.id[-4:]} (obj#{str(id(self.browser_profile))[-4:]})')
+			logger.debug(f'🔧   └─ Final config: stealth={final_stealth}, channel={final_channel.value if final_channel else None}')
 			
 			# Log any unexpected changes
 			if original_stealth != final_stealth:
