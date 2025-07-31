@@ -679,6 +679,14 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 			)
 		return self
 
+	@model_validator(mode='after')
+	def validate_and_setup_stealth_config(self) -> Self:
+		"""Validate stealth configuration and apply fallbacks if needed."""
+		if self.stealth:
+			# Validate stealth configuration
+			self.validate_stealth_config()
+		return self
+
 	def get_args(self) -> list[str]:
 		"""Get the list of all Chrome CLI launch args for this profile (compiled from defaults, user-provided, and system-specific)."""
 
@@ -739,8 +747,109 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 			if CONFIG.IN_DOCKER:
 				stealth_args.extend(StealthOps.get_docker_specific_flags())
 		
-		logger.debug(f'🕶️ Applied {len(stealth_args)} stealth-specific Chrome args for {self.stealth_level.value} level')
+		logger.info(f'🕶️ Applied {len(stealth_args)} stealth-specific Chrome args for {self.stealth_level.value} level')
 		return stealth_args
+
+	def calculate_stealth_effectiveness(self) -> int:
+		"""Calculate stealth effectiveness score based on enabled features."""
+		if not self.stealth:
+			return 0
+			
+		score = 10  # Base score for using patchright instead of playwright
+		
+		if self.stealth_level == StealthLevel.ADVANCED:
+			score += 70  # Military-grade Chrome flags
+			score += 10  # User agent spoofing
+			
+		elif self.stealth_level == StealthLevel.MILITARY_GRADE:
+			score += 70  # Military-grade Chrome flags
+			score += 10  # User agent spoofing
+			score += 10  # JavaScript evasion scripts
+			
+		return min(score, 100)  # Cap at 100%
+
+	def log_stealth_summary(self) -> None:
+		"""Log comprehensive stealth configuration summary."""
+		if not self.stealth:
+			logger.info('🔓 Stealth mode: DISABLED - using standard browser automation')
+			return
+		
+		# Calculate stealth features and effectiveness
+		effectiveness = self.calculate_stealth_effectiveness()
+		stealth_args = self._get_stealth_args()
+		ua_profile = self.get_stealth_user_agent_profile()
+		evasion_scripts = self.get_stealth_evasion_scripts()
+		
+		# Count active features
+		active_features = []
+		if self.stealth:
+			active_features.append("patchright (patched Playwright)")
+		if len(stealth_args) > 0:
+			active_features.append(f"{len(stealth_args)} Chrome detection evasion flags")
+		if ua_profile:
+			active_features.append(f"User-Agent spoofing ({ua_profile['platform']})")
+		if evasion_scripts:
+			active_features.append(f"JS evasion scripts ({len(evasion_scripts):,} chars)")
+		
+		logger.info('🕶️ ' + '='*60)
+		logger.info(f'🕶️ STEALTH MODE SUMMARY')
+		logger.info('🕶️ ' + '='*60)
+		logger.info(f'🕶️ Stealth Level: {self.stealth_level.value.upper()}')
+		logger.info(f'🕶️ Effectiveness: {effectiveness}%')
+		logger.info(f'🕶️ Active Features ({len(active_features)}):')
+		for feature in active_features:
+			logger.info(f'🕶️   ✓ {feature}')
+		
+		if ua_profile:
+			logger.info(f'🕶️ User Agent: {ua_profile["user_agent"][:80]}...')
+			logger.info(f'🕶️ Platform: {ua_profile["platform"]} | Languages: {ua_profile["languages"]}')
+			logger.info(f'🕶️ Hardware: {ua_profile["hardwareConcurrency"]} cores, {ua_profile["deviceMemory"]}GB RAM')
+		
+		if evasion_scripts:
+			logger.info(f'🕶️ JS Evasion: {len(evasion_scripts):,} characters of detection bypass code')
+		
+		logger.info('🕶️ ' + '='*60)
+		
+		# Log configuration best practices if needed
+		if self.stealth and effectiveness < 100:
+			logger.info('💡 Stealth Best Practices:')
+			if self.headless:
+				logger.info('💡   • Consider headless=False for maximum stealth')
+			if not self.user_data_dir:
+				logger.info('💡   • Consider using persistent user_data_dir for better stealth')
+			if self.stealth_level != StealthLevel.MILITARY_GRADE:
+				logger.info('💡   • Consider stealth_level=StealthLevel.MILITARY_GRADE for maximum protection')
+
+	def validate_stealth_config(self) -> None:
+		"""Validate stealth configuration and log warnings for misconfigurations."""
+		if not self.stealth:
+			return
+		
+		warnings = []
+		
+		# Check for conflicting configurations
+		if self.stealth and self.channel and self.channel.value != 'chrome':
+			warnings.append(f"stealth=True works best with channel='chrome', got '{self.channel.value}'")
+		
+		if self.stealth and self.headless:
+			warnings.append("stealth=True with headless=True may be less effective than headless=False")
+		
+		if self.stealth and not self.user_data_dir:
+			warnings.append("stealth=True without persistent user_data_dir may be less effective")
+		
+		# Check for invalid stealth level
+		if self.stealth_level not in [StealthLevel.BASIC, StealthLevel.ADVANCED, StealthLevel.MILITARY_GRADE]:
+			warnings.append(f"Invalid stealth_level='{self.stealth_level}', falling back to MILITARY_GRADE")
+			self.stealth_level = StealthLevel.MILITARY_GRADE
+		
+		# Log all warnings
+		for warning in warnings:
+			logger.warning(f'⚠️ Stealth Config Warning: {warning}')
+		
+		if warnings:
+			logger.info(f'ℹ️ Found {len(warnings)} stealth configuration warnings')
+		else:
+			logger.info('✅ Stealth configuration validated successfully')
 
 	def get_stealth_user_agent_profile(self) -> dict[str, Any] | None:
 		"""Get stealth user agent profile for spoofing when stealth is enabled."""

@@ -32,7 +32,7 @@ from playwright._impl._api_structures import ViewportSize
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, InstanceOf, PrivateAttr, model_validator
 from uuid_extensions import uuid7str
 
-from browser_use.browser.profile import BROWSERUSE_DEFAULT_CHANNEL, BrowserChannel, BrowserProfile
+from browser_use.browser.profile import BROWSERUSE_DEFAULT_CHANNEL, BrowserChannel, BrowserProfile, StealthLevel
 from browser_use.browser.stealth_ops import StealthOps
 from browser_use.browser.types import (
 	Browser,
@@ -804,24 +804,33 @@ class BrowserSession(BaseModel):
 		if is_stealth:
 			# use patchright + chrome when stealth=True
 			self.browser_profile.channel = self.browser_profile.channel or BrowserChannel.CHROME
-			self.logger.info(f'🕶️ Activated stealth mode using patchright {self.browser_profile.channel.name.lower()} browser...')
+			self.logger.info(f'🕶️ Stealth mode ENABLED: Using patchright + {self.browser_profile.channel.name.lower()} browser')
+			self.logger.info(f'🕶️ Stealth level: {self.browser_profile.stealth_level.value.upper()}')
 		else:
 			# use playwright + chromium by default
 			self.browser_profile.channel = self.browser_profile.channel or BrowserChannel.CHROMIUM
+			self.logger.info(f'🔓 Stealth mode DISABLED: Using standard playwright + {self.browser_profile.channel.name.lower()} browser')
 
 		# Get or create the global playwright object
 		self.playwright = self.playwright or await self._unsafe_get_or_start_playwright_object()
 
-		# Log stealth best-practices warnings if applicable
+		# Log stealth configuration validation if applicable
 		if is_stealth:
+			# Count Chrome args that will be applied
+			stealth_args_count = len(self.browser_profile._get_stealth_args())
+			self.logger.info(f'🔧 Chrome stealth flags ready: {stealth_args_count} detection evasion arguments')
+			
+			# Check for best practices and log recommendations
 			if self.browser_profile.channel and self.browser_profile.channel != BrowserChannel.CHROME:
-				self.logger.info(
-					' 🪄 For maximum stealth, BrowserSession(...) should be passed channel=None or BrowserChannel.CHROME'
+				self.logger.warning(
+					f'⚠️ stealth=True works best with channel=BrowserChannel.CHROME, got {self.browser_profile.channel.name}'
 				)
 			if not self.browser_profile.user_data_dir:
-				self.logger.info(' 🪄 For maximum stealth, BrowserSession(...) should be passed a persistent user_data_dir=...')
-			if self.browser_profile.headless or not self.browser_profile.no_viewport:
-				self.logger.info(' 🪄 For maximum stealth, BrowserSession(...) should be passed headless=False & viewport=None')
+				self.logger.info('💡 For maximum stealth effectiveness, consider using persistent user_data_dir')
+			if self.browser_profile.headless:
+				self.logger.info('💡 For maximum stealth effectiveness, consider headless=False')
+			if self.browser_profile.no_viewport is False:
+				self.logger.info('💡 For maximum stealth effectiveness, consider no_viewport=True')
 
 		# register a shutdown hook to stop the shared global playwright node.js client when the program exits (if an event loop is still running)
 		def shudown_playwright():
@@ -1683,15 +1692,19 @@ class BrowserSession(BaseModel):
 	async def _setup_stealth_mode(self) -> None:
 		"""Set up stealth mode features including JavaScript injection and user agent spoofing."""
 		if not self.browser_profile.stealth:
+			self.logger.info('🔓 Stealth mode: DISABLED - using standard browser automation')
 			return
 
 		assert self.browser_context, 'BrowserSession.browser_context must already be set up before calling _setup_stealth_mode()'
 
+		# Log comprehensive stealth summary
+		self.browser_profile.log_stealth_summary()
+
 		stealth_level = self.browser_profile.stealth_level
-		self.logger.info(f'🕶️ Setting up {stealth_level.value} stealth mode...')
+		self.logger.info(f'🚀 Initializing {stealth_level.value} stealth mode features...')
 
 		# Apply user agent spoofing for advanced and military-grade levels
-		if stealth_level in [self.browser_profile.stealth_level.ADVANCED, self.browser_profile.stealth_level.MILITARY_GRADE]:
+		if stealth_level in [StealthLevel.ADVANCED, StealthLevel.MILITARY_GRADE]:
 			ua_profile = self.browser_profile.get_stealth_user_agent_profile()
 			if ua_profile:
 				try:
@@ -1707,31 +1720,45 @@ class BrowserSession(BaseModel):
 						'Sec-CH-UA-Bitness': ua_profile['sec_ch_ua_bitness'],
 						'Sec-CH-UA-Full-Version-List': ua_profile['sec_ch_ua_full_version_list'],
 					})
-					self.logger.debug(f'🎭 Applied user agent spoofing: {ua_profile["user_agent"][:50]}...')
+					self.logger.info(f'🎭 User agent spoofing activated: {ua_profile["user_agent"][:60]}...')
+					self.logger.info(f'🎭 Platform spoofing: {ua_profile["platform"]} | Client hints applied')
 				except Exception as e:
-					self.logger.warning(f'⚠️ Failed to apply user agent spoofing: {type(e).__name__}: {e}')
+					self.logger.error(f'❌ Failed to apply user agent spoofing: {type(e).__name__}: {e}')
 
 		# Apply JavaScript evasion scripts for military-grade level
-		if stealth_level == self.browser_profile.stealth_level.MILITARY_GRADE:
+		if stealth_level == StealthLevel.MILITARY_GRADE:
 			evasion_scripts = self.browser_profile.get_stealth_evasion_scripts()
 			if evasion_scripts:
 				try:
 					# Add init script to all pages in the context
 					await self.browser_context.add_init_script(evasion_scripts)
-					self.logger.debug('🛡️ Applied military-grade JavaScript evasion scripts')
+					self.logger.info(f'🛡️ JavaScript evasion scripts injected: {len(evasion_scripts):,} characters')
+					self.logger.info('🛡️ JS features: webdriver hiding, plugin spoofing, canvas/audio fingerprint protection')
 				except Exception as e:
-					self.logger.warning(f'⚠️ Failed to inject stealth evasion scripts: {type(e).__name__}: {e}')
+					self.logger.error(f'❌ Failed to inject stealth evasion scripts: {type(e).__name__}: {e}')
 
-		# Log stealth effectiveness summary
-		total_features = []
-		if stealth_level != self.browser_profile.stealth_level.BASIC:
-			total_features.append(f'{len(self.browser_profile._get_stealth_args())} Chrome flags')
-		if stealth_level in [self.browser_profile.stealth_level.ADVANCED, self.browser_profile.stealth_level.MILITARY_GRADE]:
-			total_features.append('UA spoofing')
-		if stealth_level == self.browser_profile.stealth_level.MILITARY_GRADE:
-			total_features.append('JS evasion')
+		# Calculate and log final stealth effectiveness
+		effectiveness = self.browser_profile.calculate_stealth_effectiveness()
 		
-		self.logger.info(f'✅ {stealth_level.value} stealth mode active: {", ".join(total_features)}')
+		# Count successfully applied features
+		applied_features = ['patchright']
+		if stealth_level != StealthLevel.BASIC:
+			applied_features.append(f'{len(self.browser_profile._get_stealth_args())} Chrome flags')
+		if stealth_level in [StealthLevel.ADVANCED, StealthLevel.MILITARY_GRADE] and ua_profile:
+			applied_features.append('UA spoofing')
+		if stealth_level == StealthLevel.MILITARY_GRADE and evasion_scripts:
+			applied_features.append('JS evasion')
+		
+		self.logger.info(f'✅ {stealth_level.value.upper()} stealth mode initialization complete')
+		self.logger.info(f'🎯 Final stealth effectiveness: {effectiveness}% ({len(applied_features)} active features)')
+		
+		# Log any configuration recommendations for improved stealth
+		if effectiveness < 100 and stealth_level != StealthLevel.MILITARY_GRADE:
+			self.logger.info(f'💡 To maximize stealth effectiveness, consider stealth_level=StealthLevel.MILITARY_GRADE')
+		if self.browser_profile.headless:
+			self.logger.info(f'💡 For better stealth, consider headless=False')
+		if not self.browser_profile.user_data_dir:
+			self.logger.info(f'💡 For better stealth, consider using persistent user_data_dir')
 
 	def _set_browser_keep_alive(self, keep_alive: bool | None) -> None:
 		"""set the keep_alive flag on the browser_profile, defaulting to True if keep_alive is None"""
