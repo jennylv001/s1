@@ -185,6 +185,13 @@ class Controller(Generic[Context]):
 			try:
 				assert element_node is not None, f'Element with index {params.index} does not exist'
 				download_path = await browser_session._click_element_node(element_node)
+				
+				# Add subtle human-like delay after successful click when stealth mode is enabled
+				if browser_session.browser_profile.stealth:
+					import random
+					import asyncio
+					await asyncio.sleep(random.uniform(0.1, 0.3))  # 100-300ms natural pause after click
+				
 				if download_path:
 					emoji = '💾'
 					msg = f'Downloaded file to {download_path}'
@@ -224,6 +231,13 @@ class Controller(Generic[Context]):
 			assert element_node is not None, f'Element with index {params.index} does not exist'
 			try:
 				await browser_session._input_text_element_node(element_node, params.text)
+				
+				# Add subtle human-like delay after text input when stealth mode is enabled
+				if browser_session.browser_profile.stealth:
+					import random
+					import asyncio
+					await asyncio.sleep(random.uniform(0.05, 0.2))  # 50-200ms natural pause after typing
+					
 			except Exception:
 				msg = f'Failed to input text into element {params.index}.'
 				raise BrowserError(msg)
