@@ -349,6 +349,17 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 			if hasattr(browser_profile, 'stealth') and browser_profile.stealth:
 				self.logger.debug(f'🔍 Agent.__init__: Preserving stealth config: stealth={browser_profile.stealth}, level={browser_profile.stealth_level}')
 		
+		# LOGGING: Agent initialization with browser profile tracking
+		profile_id = browser_profile.id if browser_profile else None
+		profile_obj_id = str(id(browser_profile))[-4:] if browser_profile else None
+		initial_stealth = getattr(browser_profile, 'stealth', None) if browser_profile else None
+		initial_channel = getattr(browser_profile, 'channel', None) if browser_profile else None
+		
+		self.logger.info(f'🤖 Agent#{self.task_id[-3:]} INITIALIZING')
+		self.logger.info(f'🤖   └─ Task ID: {self.task_id}')
+		self.logger.info(f'🤖   └─ Input browser_profile: {profile_id[-4:] if profile_id else None} (obj#{profile_obj_id})')
+		self.logger.info(f'🤖   └─ Input config: stealth={initial_stealth}, channel={initial_channel.value if initial_channel else None}')
+		
 		# Validate and log browser profile stealth configuration
 		if hasattr(browser_profile, 'stealth') and browser_profile.stealth:
 			self.logger.debug(f'🔍 Agent.__init__: Final browser_profile stealth config: stealth={browser_profile.stealth}, level={browser_profile.stealth_level}')
@@ -357,12 +368,24 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 			# Always copy sessions that are passed in to avoid agents overwriting each other's agent_current_page and human_current_page by accident
 			# The model_copy() method now handles copying all necessary fields and setting up ownership
 			if browser_session._owns_browser_resources:
+				# LOGGING: Agent using existing BrowserSession
+				self.logger.info(f'🤖 Agent#{self.task_id[-3:]} USING EXISTING BrowserSession')
+				self.logger.info(f'🤖   └─ BrowserSession: {browser_session.id[-4:]} (obj#{str(id(browser_session))[-4:]})')
+				self.logger.info(f'🤖   └─ Session owns resources: {browser_session._owns_browser_resources}')
+				if hasattr(browser_session, 'browser_profile') and browser_session.browser_profile:
+					self.logger.info(f'🤖   └─ Session profile: {browser_session.browser_profile.id[-4:]} (obj#{str(id(browser_session.browser_profile))[-4:]})')
+					self.logger.info(f'🤖   └─ Session config: stealth={browser_session.browser_profile.stealth}, channel={browser_session.browser_profile.channel.value if browser_session.browser_profile.channel else None}')
 				self.browser_session = browser_session
 			else:
+				# LOGGING: Agent copying shared BrowserSession (potential issue)
 				self.logger.warning(
 					'⚠️ Attempting to use multiple Agents with the same BrowserSession! This is not supported yet and will likely lead to strange behavior, use separate BrowserSessions for each Agent.'
 				)
+				self.logger.warning(f'🤖   └─ Original BrowserSession: {browser_session.id[-4:]} (obj#{str(id(browser_session))[-4:]})')
+				if hasattr(browser_session, 'browser_profile') and browser_session.browser_profile:
+					self.logger.warning(f'🤖   └─ Original config: stealth={browser_session.browser_profile.stealth}, channel={browser_session.browser_profile.channel.value if browser_session.browser_profile.channel else None}')
 				self.browser_session = browser_session.model_copy()
+				self.logger.warning(f'🤖   └─ Copied BrowserSession: {self.browser_session.id[-4:]} (obj#{str(id(self.browser_session))[-4:]})')
 		else:
 			if browser is not None:
 				assert isinstance(browser, Browser), 'Browser is not set up'
@@ -370,6 +393,13 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 			# Enhanced logging for stealth mode debugging - capture browser profile before BrowserSession creation
 			if hasattr(browser_profile, 'stealth') and browser_profile.stealth:
 				self.logger.debug(f'🔍 Agent.__init__ creating BrowserSession: browser_profile.stealth={browser_profile.stealth}, level={browser_profile.stealth_level}')
+			
+			# LOGGING: Agent creating new BrowserSession
+			self.logger.info(f'🤖 Agent#{self.task_id[-3:]} CREATING NEW BrowserSession')
+			self.logger.info(f'🤖   └─ Input browser_profile: {browser_profile.id[-4:]} (obj#{str(id(browser_profile))[-4:]})')
+			self.logger.info(f'🤖   └─ Input browser: {browser is not None}')
+			self.logger.info(f'🤖   └─ Input browser_context: {browser_context is not None}')
+			self.logger.info(f'🤖   └─ Input page: {page is not None}')
 			
 			self.browser_session = BrowserSession(
 				browser_profile=browser_profile,
@@ -383,12 +413,26 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 			if hasattr(browser_profile, 'stealth') and browser_profile.stealth:
 				actual_stealth = getattr(self.browser_session.browser_profile, 'stealth', False)
 				actual_level = getattr(self.browser_session.browser_profile, 'stealth_level', None)
+				actual_channel = getattr(self.browser_session.browser_profile, 'channel', None)
 				self.logger.debug(f'🔍 Agent.__init__ after BrowserSession: browser_session.browser_profile.stealth={actual_stealth}, level={actual_level}')
+				
+				# LOGGING: Comprehensive state verification after BrowserSession creation
+				self.logger.info(f'🤖 Agent#{self.task_id[-3:]} BrowserSession CREATED')
+				self.logger.info(f'🤖   └─ BrowserSession: {self.browser_session.id[-4:]} (obj#{str(id(self.browser_session))[-4:]})')
+				self.logger.info(f'🤖   └─ Session profile: {self.browser_session.browser_profile.id[-4:]} (obj#{str(id(self.browser_session.browser_profile))[-4:]})')
+				self.logger.info(f'🤖   └─ Final config: stealth={actual_stealth}, channel={actual_channel.value if actual_channel else None}')
 				
 				if not actual_stealth:
 					self.logger.error(f'❌ STEALTH CONFIGURATION LOST: Expected stealth=True but got stealth={actual_stealth}')
 				else:
 					self.logger.info(f'✅ Stealth configuration preserved: stealth={actual_stealth}, level={actual_level}')
+			else:
+				# LOGGING: Non-stealth BrowserSession creation
+				self.logger.info(f'🤖 Agent#{self.task_id[-3:]} BrowserSession CREATED (non-stealth)')
+				self.logger.info(f'🤖   └─ BrowserSession: {self.browser_session.id[-4:]} (obj#{str(id(self.browser_session))[-4:]})')
+				self.logger.info(f'🤖   └─ Session profile: {self.browser_session.browser_profile.id[-4:]} (obj#{str(id(self.browser_session.browser_profile))[-4:]})')
+				final_channel = getattr(self.browser_session.browser_profile, 'channel', None)
+				self.logger.info(f'🤖   └─ Channel: {final_channel.value if final_channel else None}')
 
 		if self.sensitive_data:
 			# Check if sensitive_data has domain-specific credentials
