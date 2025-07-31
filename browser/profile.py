@@ -637,7 +637,7 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 		finally:
 			del frame
 			
-		logger.info(f'🏗️ BrowserProfile#{self.id[-4:]} CREATED (obj#{str(id(self))[-4:]})')
+		logger.debug(f'🏗️ BrowserProfile#{self.id[-4:]} CREATED (obj#{str(id(self))[-4:]})')
 		logger.debug(f'🏗️   └─ Creation context: {creation_context}')
 		logger.debug(f'🏗️   └─ Initial config: stealth={self.stealth}, channel={self.channel.value if self.channel else None}')
 		logger.debug(f'🏗️   └─ Stealth level: {self.stealth_level.value if self.stealth else "N/A"}')
@@ -935,11 +935,11 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 		finally:
 			del frame
 			
-		logger.info(f'📋 BrowserProfile#{self.id[-4:]} COPYING (obj#{str(id(self))[-4:]})')
-		logger.info(f'📋   └─ Copy context: {copy_context}')
-		logger.info(f'📋   └─ Original config: stealth={self.stealth}, channel={self.channel.value if self.channel else None}')
+		logger.debug(f'📋 BrowserProfile#{self.id[-4:]} COPYING (obj#{str(id(self))[-4:]})')
+		logger.debug(f'📋   └─ Copy context: {copy_context}')
+		logger.debug(f'📋   └─ Original config: stealth={self.stealth}, channel={self.channel.value if self.channel else None}')
 		if update:
-			logger.info(f'📋   └─ Update overrides: {update}')
+			logger.debug(f'📋   └─ Update overrides: {update}')
 			# LOGGING: Check for stealth/channel mutations in update
 			if 'stealth' in update:
 				logger.warning(f'📋   └─ ⚠️ STEALTH MUTATION in copy update: {self.stealth} → {update["stealth"]}')
@@ -950,9 +950,9 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 		copied = super().model_copy(update=update, deep=deep)
 		
 		# LOGGING: Log the copied object
-		logger.info(f'📋 BrowserProfile#{copied.id[-4:]} COPY CREATED (obj#{str(id(copied))[-4:]})')
-		logger.info(f'📋   └─ Final config: stealth={copied.stealth}, channel={copied.channel.value if copied.channel else None}')
-		logger.info(f'📋   └─ Copy relationship: {self.id[-4:]} (obj#{str(id(self))[-4:]}) → {copied.id[-4:]} (obj#{str(id(copied))[-4:]})')
+		logger.debug(f'📋 BrowserProfile#{copied.id[-4:]} COPY CREATED (obj#{str(id(copied))[-4:]})')
+		logger.debug(f'📋   └─ Final config: stealth={copied.stealth}, channel={copied.channel.value if copied.channel else None}')
+		logger.debug(f'📋   └─ Copy relationship: {self.id[-4:]} (obj#{str(id(self))[-4:]}) → {copied.id[-4:]} (obj#{str(id(copied))[-4:]})')
 		
 		return copied
 
