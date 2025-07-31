@@ -327,11 +327,11 @@ class BrowserSession(BaseModel):
 		original_channel = getattr(self.browser_profile, 'channel', None) if self.browser_profile else None
 		
 		logger = logging.getLogger(f'browser_use.BrowserSession')
-		logger.info(f'🔧 BrowserSession#{self.id[-4:]} APPLYING PROFILE OVERRIDES')
-		logger.info(f'🔧   └─ Original profile: {original_profile_id[-4:] if original_profile_id else None} (obj#{str(id(self.browser_profile))[-4:] if self.browser_profile else None})')
-		logger.info(f'🔧   └─ Original config: stealth={original_stealth}, channel={original_channel.value if original_channel else None}')
+		logger.debug(f'🔧 BrowserSession#{self.id[-4:]} APPLYING PROFILE OVERRIDES')
+		logger.debug(f'🔧   └─ Original profile: {original_profile_id[-4:] if original_profile_id else None} (obj#{str(id(self.browser_profile))[-4:] if self.browser_profile else None})')
+		logger.debug(f'🔧   └─ Original config: stealth={original_stealth}, channel={original_channel.value if original_channel else None}')
 		if profile_overrides:
-			logger.info(f'🔧   └─ Session overrides: {profile_overrides}')
+			logger.debug(f'🔧   └─ Session overrides: {profile_overrides}')
 			# Log specific stealth/channel overrides
 			if 'stealth' in profile_overrides:
 				logger.warning(f'🔧   └─ ⚠️ STEALTH OVERRIDE: {original_stealth} → {profile_overrides["stealth"]}')
@@ -348,9 +348,9 @@ class BrowserSession(BaseModel):
 			# LOGGING: Track final state after override application
 			final_stealth = getattr(self.browser_profile, 'stealth', None)
 			final_channel = getattr(self.browser_profile, 'channel', None)
-			logger.info(f'🔧 BrowserSession#{self.id[-4:]} PROFILE OVERRIDES APPLIED')
-			logger.info(f'🔧   └─ New profile: {self.browser_profile.id[-4:]} (obj#{str(id(self.browser_profile))[-4:]})')
-			logger.info(f'🔧   └─ Final config: stealth={final_stealth}, channel={final_channel.value if final_channel else None}')
+			logger.debug(f'🔧 BrowserSession#{self.id[-4:]} PROFILE OVERRIDES APPLIED')
+			logger.debug(f'🔧   └─ New profile: {self.browser_profile.id[-4:]} (obj#{str(id(self.browser_profile))[-4:]})')
+			logger.debug(f'🔧   └─ Final config: stealth={final_stealth}, channel={final_channel.value if final_channel else None}')
 			
 			# Log any unexpected changes
 			if original_stealth != final_stealth:
@@ -2413,9 +2413,13 @@ class BrowserSession(BaseModel):
 								self.logger.warning(
 									f'⚠️ Element click failed, falling back to coordinate click at ({element_node.viewport_coordinates.center.x}, {element_node.viewport_coordinates.center.y})'
 								)
-								await page.mouse.click(
-									element_node.viewport_coordinates.center.x, element_node.viewport_coordinates.center.y
-								)
+								# Use enhanced human-like mouse movement when stealth mode is enabled
+								if self.browser_profile.stealth:
+									await self._perform_human_like_click(page, element_node.viewport_coordinates.center.x, element_node.viewport_coordinates.center.y)
+								else:
+									await page.mouse.click(
+										element_node.viewport_coordinates.center.x, element_node.viewport_coordinates.center.y
+									)
 								try:
 									await page.wait_for_load_state()
 								except Exception:
@@ -2430,6 +2434,77 @@ class BrowserSession(BaseModel):
 			raise e
 		except Exception as e:
 			raise Exception(f'Failed to click element: {repr(element_node)}. Error: {str(e)}')
+
+	async def _type_text_human_like(self, page: Page, text: str) -> None:
+		"""Type text with human-like rhythm and timing when stealth mode is enabled."""
+		import random
+		
+		for i, char in enumerate(text):
+			# Human-like typing speed variations
+			if char == ' ':
+				# Spaces tend to be typed faster
+				delay = random.uniform(0.05, 0.12)  # 50-120ms
+			elif char in '.,!?;:':
+				# Punctuation tends to have slight pauses
+				delay = random.uniform(0.08, 0.15)  # 80-150ms  
+			elif char.isupper():
+				# Capital letters (shift key) slightly slower
+				delay = random.uniform(0.06, 0.14)  # 60-140ms
+			else:
+				# Regular characters
+				delay = random.uniform(0.04, 0.10)  # 40-100ms
+			
+			await page.keyboard.type(char)
+			
+			# Don't delay after the last character
+			if i < len(text) - 1:
+				await asyncio.sleep(delay)
+				
+				# Occasional micro-pauses (human hesitation/thinking)
+				if random.random() < 0.05:  # 5% chance
+					await asyncio.sleep(random.uniform(0.2, 0.5))  # Brief thinking pause
+
+	async def _perform_human_like_click(self, page: Page, target_x: float, target_y: float) -> None:
+		"""Perform a human-like click with natural mouse movement when stealth mode is enabled."""
+		import asyncio
+		import random
+		
+		# Use enhanced mouse movement JavaScript from StealthOps
+		try:
+			# Inject the HumanMouse class if not already present
+			await page.evaluate(StealthOps.get_enhanced_mouse_movements_js())
+			
+			# Generate human-like path to target coordinates
+			path_result = await page.evaluate(f"""
+				() => {{
+					if (!window.__humanMouse) {{
+						return null;
+					}}
+					return window.__humanMouse.generatePath({target_x}, {target_y});
+				}}
+			""")
+			
+			if path_result and len(path_result) > 0:
+				# Follow the generated path with realistic timing
+				for i, point in enumerate(path_result):
+					await page.mouse.move(point['x'], point['y'])
+					# Add micro-delays between movements (1-3ms realistic for smooth movement)
+					if i < len(path_result) - 1:  # Don't delay after the last movement
+						await asyncio.sleep(random.uniform(0.001, 0.003))
+				
+				# Add a brief pause before clicking (human-like hesitation)
+				await asyncio.sleep(random.uniform(0.02, 0.08))
+				
+				# Perform the actual click
+				await page.mouse.click(target_x, target_y)
+			else:
+				# Fallback to direct click if path generation fails
+				await page.mouse.click(target_x, target_y)
+				
+		except Exception as e:
+			self.logger.debug(f'Human-like mouse movement failed, falling back to direct click: {e}')
+			# Fallback to direct click
+			await page.mouse.click(target_x, target_y)
 
 	@time_execution_async('--get_tabs_info')
 	@retry(timeout=6, retries=1)
@@ -4291,7 +4366,12 @@ class BrowserSession(BaseModel):
 				await element_handle.click()
 				await asyncio.sleep(0.1)  # Increased sleep time
 				page = await self.get_current_page()
-				await page.keyboard.type(text)
+				
+				# Use human-like typing when stealth mode is enabled
+				if self.browser_profile.stealth:
+					await self._type_text_human_like(page, text)
+				else:
+					await page.keyboard.type(text)
 				return
 			except Exception as e:
 				self.logger.debug(f'Input text with click and type failed, trying element handle method: {e}')
@@ -4310,7 +4390,15 @@ class BrowserSession(BaseModel):
 			try:
 				if (await is_contenteditable.json_value() or tag_name == 'input') and not (readonly or disabled):
 					await element_handle.evaluate('el => {el.textContent = ""; el.value = "";}')
-					await element_handle.type(text, delay=5)
+					
+					# Use human-like typing delay when stealth mode is enabled
+					if self.browser_profile.stealth:
+						# Human-like typing with variable delays (30-80ms between keystrokes)
+						import random
+						for char in text:
+							await element_handle.type(char, delay=random.randint(30, 80))
+					else:
+						await element_handle.type(text, delay=5)
 				else:
 					await element_handle.fill(text)
 			except Exception as e:

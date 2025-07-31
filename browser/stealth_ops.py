@@ -204,7 +204,56 @@ class StealthOps:
             # TODO: Add more diverse profiles (Linux, other browser versions, mobile if targeted)
             # Ensure all profiles have the new sec_ch_ua* fields.
         ]
-        return random.choice(profiles)
+        # Add dynamic variations to reduce fingerprinting
+        selected_profile = random.choice(profiles)
+        return StealthOps._add_profile_variations(selected_profile)
+
+    @staticmethod
+    def _add_profile_variations(profile: Dict[str, Any]) -> Dict[str, Any]:
+        """Add subtle random variations to user agent profile to reduce fingerprinting."""
+        # Create a copy to avoid mutating the original
+        varied_profile = profile.copy()
+        
+        # Add subtle RAM variations (±25% realistic variance)
+        base_memory = profile["deviceMemory"]
+        memory_variations = [base_memory//2, base_memory, base_memory*2]
+        if base_memory >= 8:
+            memory_variations.extend([base_memory + 8, base_memory + 16])
+        varied_profile["deviceMemory"] = random.choice(memory_variations)
+        
+        # Add CPU core variations (realistic for the platform)
+        base_cores = profile["hardwareConcurrency"]
+        if "Intel" in profile.get("webgl_renderer", ""):
+            # Intel systems commonly have 4, 6, 8, 12, 16 cores
+            core_options = [4, 6, 8, 12, 16]
+        elif "Apple" in profile.get("webgl_renderer", ""):
+            # Apple Silicon commonly have 8, 10, 12 cores
+            core_options = [8, 10, 12]
+        else:
+            # Generic variations
+            core_options = [4, 6, 8, 12, 16]
+        varied_profile["hardwareConcurrency"] = random.choice([c for c in core_options if c <= base_cores * 2])
+        
+        # Add minor screen resolution variations (realistic common resolutions)
+        if profile["screen"]["width"] == 1920:
+            # Common 1920-width variations
+            width_options = [1920, 1920]  # Keep most common
+            height_options = [1080, 1200]  # 16:9 and 16:10
+        elif profile["screen"]["width"] == 1440:
+            width_options = [1440, 1536]  # MacBook variations
+            height_options = [900, 960]
+        else:
+            width_options = [profile["screen"]["width"]]
+            height_options = [profile["screen"]["height"]]
+            
+        new_width = random.choice(width_options)
+        new_height = random.choice(height_options)
+        varied_profile["screen"]["width"] = new_width
+        varied_profile["screen"]["height"] = new_height
+        varied_profile["screen"]["availWidth"] = new_width
+        varied_profile["screen"]["availHeight"] = new_height - 40  # Taskbar/dock space
+        
+        return varied_profile
 
 
     @staticmethod

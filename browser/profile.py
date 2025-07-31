@@ -638,9 +638,9 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 			del frame
 			
 		logger.info(f'🏗️ BrowserProfile#{self.id[-4:]} CREATED (obj#{str(id(self))[-4:]})')
-		logger.info(f'🏗️   └─ Creation context: {creation_context}')
-		logger.info(f'🏗️   └─ Initial config: stealth={self.stealth}, channel={self.channel.value if self.channel else None}')
-		logger.info(f'🏗️   └─ Stealth level: {self.stealth_level.value if self.stealth else "N/A"}')
+		logger.debug(f'🏗️   └─ Creation context: {creation_context}')
+		logger.debug(f'🏗️   └─ Initial config: stealth={self.stealth}, channel={self.channel.value if self.channel else None}')
+		logger.debug(f'🏗️   └─ Stealth level: {self.stealth_level.value if self.stealth else "N/A"}')
 		return self
 
 	@model_validator(mode='after')
@@ -715,11 +715,11 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 				
 				# LOGGING: Channel mutation for stealth mode
 				logger.info(f'🔧 BrowserProfile#{self.id[-4:]} (obj#{str(id(self))[-4:]}) CHANNEL MUTATION: stealth=True enforcing channel change')
-				logger.info(f'🔧   └─ Original channel: {original_channel} → New channel: {BrowserChannel.CHROME.value}')
-				logger.info(f'🔧   └─ Context: stealth mode requires patchright compatibility')
+				logger.debug(f'🔧   └─ Original channel: {original_channel} → New channel: {BrowserChannel.CHROME.value}')
+				logger.debug(f'🔧   └─ Context: stealth mode requires patchright compatibility')
 				
 				self.channel = BrowserChannel.CHROME
-				logger.info(f'🔧 Stealth mode enabled: Forcing browser channel from {original_channel} to {self.channel.value} for patchright compatibility')
+				logger.debug(f'🔧 Stealth mode enabled: Forcing browser channel from {original_channel} to {self.channel.value} for patchright compatibility')
 			else:
 				# LOGGING: Channel already correct for stealth
 				logger.debug(f'🔧 BrowserProfile#{self.id[-4:]} (obj#{str(id(self))[-4:]}) CHANNEL PRESERVED: {self.channel.value} already correct for stealth mode')
@@ -791,7 +791,7 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 			if CONFIG.IN_DOCKER:
 				stealth_args.extend(StealthOps.get_docker_specific_flags())
 		
-		logger.info(f'🕶️ Applied {len(stealth_args)} stealth-specific Chrome args for {self.stealth_level.value} level')
+		logger.debug(f'🕶️ Applied {len(stealth_args)} stealth-specific Chrome args for {self.stealth_level.value} level')
 		return stealth_args
 
 	def calculate_stealth_effectiveness(self) -> int:
@@ -835,34 +835,34 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 		if evasion_scripts:
 			active_features.append(f"JS evasion scripts ({len(evasion_scripts):,} chars)")
 		
-		logger.info('🕶️ ' + '='*60)
-		logger.info(f'🕶️ STEALTH MODE SUMMARY')
-		logger.info('🕶️ ' + '='*60)
-		logger.info(f'🕶️ Stealth Level: {self.stealth_level.value.upper()}')
-		logger.info(f'🕶️ Effectiveness: {effectiveness}%')
-		logger.info(f'🕶️ Active Features ({len(active_features)}):')
+		logger.debug('🕶️ ' + '='*60)
+		logger.debug(f'🕶️ STEALTH MODE SUMMARY')
+		logger.debug('🕶️ ' + '='*60)
+		logger.debug(f'🕶️ Stealth Level: {self.stealth_level.value.upper()}')
+		logger.debug(f'🕶️ Effectiveness: {effectiveness}%')
+		logger.debug(f'🕶️ Active Features ({len(active_features)}):')
 		for feature in active_features:
-			logger.info(f'🕶️   ✓ {feature}')
+			logger.debug(f'🕶️   ✓ {feature}')
 		
 		if ua_profile:
-			logger.info(f'🕶️ User Agent: {ua_profile["user_agent"][:80]}...')
-			logger.info(f'🕶️ Platform: {ua_profile["platform"]} | Languages: {ua_profile["languages"]}')
-			logger.info(f'🕶️ Hardware: {ua_profile["hardwareConcurrency"]} cores, {ua_profile["deviceMemory"]}GB RAM')
+			logger.debug(f'🕶️ User Agent: {ua_profile["user_agent"][:80]}...')
+			logger.debug(f'🕶️ Platform: {ua_profile["platform"]} | Languages: {ua_profile["languages"]}')
+			logger.debug(f'🕶️ Hardware: {ua_profile["hardwareConcurrency"]} cores, {ua_profile["deviceMemory"]}GB RAM')
 		
 		if evasion_scripts:
-			logger.info(f'🕶️ JS Evasion: {len(evasion_scripts):,} characters of detection bypass code')
+			logger.debug(f'🕶️ JS Evasion: {len(evasion_scripts):,} characters of detection bypass code')
 		
-		logger.info('🕶️ ' + '='*60)
+		logger.debug('🕶️ ' + '='*60)
 		
 		# Log configuration best practices if needed
 		if self.stealth and effectiveness < 100:
-			logger.info('💡 Stealth Best Practices:')
+			logger.debug('💡 Stealth Best Practices:')
 			if self.headless:
-				logger.info('💡   • Consider headless=False for maximum stealth')
+				logger.debug('💡   • Consider headless=False for maximum stealth')
 			if not self.user_data_dir:
-				logger.info('💡   • Consider using persistent user_data_dir for better stealth')
+				logger.debug('💡   • Consider using persistent user_data_dir for better stealth')
 			if self.stealth_level != StealthLevel.MILITARY_GRADE:
-				logger.info('💡   • Consider stealth_level=StealthLevel.MILITARY_GRADE for maximum protection')
+				logger.debug('💡   • Consider stealth_level=StealthLevel.MILITARY_GRADE for maximum protection')
 
 	def validate_stealth_config(self) -> None:
 		"""Validate stealth configuration and log warnings for misconfigurations."""
