@@ -1,5 +1,5 @@
-from .profile import BrowserProfile
-from .session import BrowserSession
+from browser_use.browser.profile import BrowserProfile
+from browser_use.browser.session import BrowserSession
 
 BrowserConfig = BrowserProfile
 BrowserContextConfig = BrowserProfile
