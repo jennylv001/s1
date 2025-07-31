@@ -339,7 +339,19 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 		# assert not (browser_profile and browser_context), 'Cannot provide both browser_profile and browser_context'
 		# assert not (browser and browser_context), 'Cannot provide both browser and browser_context'
 		# assert not (browser_session and browser_context), 'Cannot provide both browser_session and browser_context'
-		browser_profile = browser_profile or DEFAULT_BROWSER_PROFILE
+		
+		# Fix 1: Agent State Transfer Preservation 
+		# Ensure stealth configuration is preserved when creating BrowserProfile from passed config
+		if browser_profile is None:
+			browser_profile = DEFAULT_BROWSER_PROFILE
+		else:
+			# Enhanced logging for stealth mode debugging - capture original config
+			if hasattr(browser_profile, 'stealth') and browser_profile.stealth:
+				self.logger.debug(f'🔍 Agent.__init__: Preserving stealth config: stealth={browser_profile.stealth}, level={browser_profile.stealth_level}')
+		
+		# Validate and log browser profile stealth configuration
+		if hasattr(browser_profile, 'stealth') and browser_profile.stealth:
+			self.logger.debug(f'🔍 Agent.__init__: Final browser_profile stealth config: stealth={browser_profile.stealth}, level={browser_profile.stealth_level}')
 
 		if browser_session:
 			# Always copy sessions that are passed in to avoid agents overwriting each other's agent_current_page and human_current_page by accident
@@ -354,6 +366,11 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 		else:
 			if browser is not None:
 				assert isinstance(browser, Browser), 'Browser is not set up'
+			
+			# Enhanced logging for stealth mode debugging - capture browser profile before BrowserSession creation
+			if hasattr(browser_profile, 'stealth') and browser_profile.stealth:
+				self.logger.debug(f'🔍 Agent.__init__ creating BrowserSession: browser_profile.stealth={browser_profile.stealth}, level={browser_profile.stealth_level}')
+			
 			self.browser_session = BrowserSession(
 				browser_profile=browser_profile,
 				browser=browser,
@@ -361,6 +378,17 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 				agent_current_page=page,
 				id=uuid7str()[:-4] + self.id[-4:],  # re-use the same 4-char suffix so they show up together in logs
 			)
+			
+			# Enhanced logging for stealth mode debugging - verify stealth config was preserved after BrowserSession creation
+			if hasattr(browser_profile, 'stealth') and browser_profile.stealth:
+				actual_stealth = getattr(self.browser_session.browser_profile, 'stealth', False)
+				actual_level = getattr(self.browser_session.browser_profile, 'stealth_level', None)
+				self.logger.debug(f'🔍 Agent.__init__ after BrowserSession: browser_session.browser_profile.stealth={actual_stealth}, level={actual_level}')
+				
+				if not actual_stealth:
+					self.logger.error(f'❌ STEALTH CONFIGURATION LOST: Expected stealth=True but got stealth={actual_stealth}')
+				else:
+					self.logger.info(f'✅ Stealth configuration preserved: stealth={actual_stealth}, level={actual_level}')
 
 		if self.sensitive_data:
 			# Check if sensitive_data has domain-specific credentials

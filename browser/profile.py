@@ -683,6 +683,13 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 	def validate_and_setup_stealth_config(self) -> Self:
 		"""Validate stealth configuration and apply fallbacks if needed."""
 		if self.stealth:
+			# Fix 3: Channel Enforcement for Stealth
+			# Force Chrome channel when stealth=True to ensure patchright compatibility
+			if not self.channel or self.channel != BrowserChannel.CHROME:
+				original_channel = self.channel
+				self.channel = BrowserChannel.CHROME
+				logger.info(f'🔧 Stealth mode enabled: Forcing browser channel from {original_channel} to {self.channel.value} for patchright compatibility')
+			
 			# Validate stealth configuration
 			self.validate_stealth_config()
 		return self
@@ -825,6 +832,9 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 		if not self.stealth:
 			return
 		
+		# Enhanced logging for stealth mode debugging
+		logger.debug(f'🔍 validate_stealth_config: stealth={self.stealth}, level={self.stealth_level}, channel={self.channel}')
+		
 		warnings = []
 		
 		# Check for conflicting configurations
@@ -850,6 +860,9 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 			logger.info(f'ℹ️ Found {len(warnings)} stealth configuration warnings')
 		else:
 			logger.info('✅ Stealth configuration validated successfully')
+		
+		# Enhanced logging for debugging: log final stealth configuration
+		logger.debug(f'🔍 Final stealth config after validation: stealth={self.stealth}, level={self.stealth_level}, channel={self.channel}')
 
 	def get_stealth_user_agent_profile(self) -> dict[str, Any] | None:
 		"""Get stealth user agent profile for spoofing when stealth is enabled."""
