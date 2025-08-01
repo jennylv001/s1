@@ -888,9 +888,9 @@ class BrowserSession(BaseModel):
 
 		# LOGGING: Track channel mutations during playwright setup
 		original_channel = self.browser_profile.channel
-		self.logger.info(f'🎭 BrowserSession#{self.id[-4:]} SETUP_PLAYWRIGHT')
-		self.logger.info(f'🎭   └─ Profile: {self.browser_profile.id[-4:]} (obj#{str(id(self.browser_profile))[-4:]})')
-		self.logger.info(f'🎭   └─ Input config: stealth={is_stealth}, channel={original_channel.value if original_channel else None}')
+		self.logger.debug(f'🎭 BrowserSession#{self.id[-4:]} SETUP_PLAYWRIGHT')
+		self.logger.debug(f'🎭   └─ Profile: {self.browser_profile.id[-4:]} (obj#{str(id(self.browser_profile))[-4:]})')
+		self.logger.debug(f'🎭   └─ Input config: stealth={is_stealth}, channel={original_channel.value if original_channel else None}')
 
 		# Configure browser channel based on stealth mode
 		if is_stealth:
@@ -912,7 +912,7 @@ class BrowserSession(BaseModel):
 			self.browser_profile.channel = self.browser_profile.channel or BrowserChannel.CHROMIUM
 			if original_channel != self.browser_profile.channel:
 				# LOGGING: Channel mutation during playwright setup (non-stealth)
-				self.logger.info(f'🎭   └─ Channel defaulted: {original_channel} → {self.browser_profile.channel.name.lower()}')
+				self.logger.debug(f'🎭   └─ Channel defaulted: {original_channel} → {self.browser_profile.channel.name.lower()}')
 			self.logger.info(f'🔓 Stealth mode DISABLED: Using standard playwright + {self.browser_profile.channel.name.lower()} browser')
 
 		# Get or create the global playwright object
@@ -947,9 +947,9 @@ class BrowserSession(BaseModel):
 		# LOGGING: Final configuration after setup
 		final_channel = self.browser_profile.channel
 		final_stealth = self.browser_profile.stealth
-		self.logger.info(f'🎭 BrowserSession#{self.id[-4:]} PLAYWRIGHT SETUP COMPLETE')
-		self.logger.info(f'🎭   └─ Final config: stealth={final_stealth}, channel={final_channel.value if final_channel else None}')
-		self.logger.info(f'🎭   └─ Playwright type: {type(self.playwright).__module__.split(".")[0] if self.playwright else "None"}')
+		self.logger.debug(f'🎭 BrowserSession#{self.id[-4:]} PLAYWRIGHT SETUP COMPLETE')
+		self.logger.debug(f'🎭   └─ Final config: stealth={final_stealth}, channel={final_channel.value if final_channel else None}')
+		self.logger.debug(f'🎭   └─ Playwright type: {type(self.playwright).__module__.split(".")[0] if self.playwright else "None"}')
 
 		# register a shutdown hook to stop the shared global playwright node.js client when the program exits (if an event loop is still running)
 		def shudown_playwright():
@@ -1005,7 +1005,7 @@ class BrowserSession(BaseModel):
 			self.browser = browser_from_context
 
 		if self.browser or self.browser_context:
-			self.logger.info(f'🎭 Connected to existing user-provided browser: {self.browser_context}')
+			self.logger.debug(f'🎭 Connected to existing user-provided browser: {self.browser_context}')
 			self._set_browser_keep_alive(True)  # we connected to an existing browser, dont kill it at the end
 
 	async def setup_browser_via_browser_pid(self) -> None:
@@ -1870,8 +1870,8 @@ class BrowserSession(BaseModel):
 						'Sec-CH-UA-Bitness': ua_profile['sec_ch_ua_bitness'],
 						'Sec-CH-UA-Full-Version-List': ua_profile['sec_ch_ua_full_version_list'],
 					})
-					self.logger.info(f'🎭 User agent spoofing activated: {ua_profile["user_agent"][:60]}...')
-					self.logger.info(f'🎭 Platform spoofing: {ua_profile["platform"]} | Client hints applied')
+					self.logger.debug(f'🎭 User agent spoofing activated: {ua_profile["user_agent"][:60]}...')
+					self.logger.debug(f'🎭 Platform spoofing: {ua_profile["platform"]} | Client hints applied')
 				except Exception as e:
 					self.logger.error(f'❌ Failed to apply user agent spoofing: {type(e).__name__}: {e}')
 
